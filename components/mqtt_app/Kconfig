@@ -1,4 +1,11 @@
-menu "Example Configuration"
+menu "MQTT Application Configuration"
+
+    config MQTT_APP_ENABLED
+        bool "Enable MQTT"
+        default y
+        help
+            When enabled, mqtt_app_start() starts the MQTT client and connects
+            to the configured broker. Disable to skip MQTT entirely.
 
     choice EXAMPLE_CERT_VALIDATION
         prompt "Certificate validation method"
