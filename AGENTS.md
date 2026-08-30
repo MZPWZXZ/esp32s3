@@ -14,7 +14,7 @@
 ## 变更记录
 
 ### 2026-08-30
-- `mqtt_evt_handler` 及 OneNET 主题宏移入 `mqtt_driver`：驱动内部自行处理订阅/上报/命令下发回复，`mqtt_driver_start()` 改为无参调用，移除外部事件回调接口。`task.c` 增加订阅 `cmd/request/+`，收到平台命令后自动回复到 `cmd/response/{cmdid}`；同时订阅数据上报响应主题 `dp/post/json/+`。`mqtt_driver` 增加产品 ID/设备名称/设备密钥/token 有效期配置，实现 OneNET token 生成（HMAC-SHA1，version=2018-10-31）与 CONNECT 三要素认证；`task.c` 增加 SNTP 时间同步；Broker URI 改为 `mqtt://studio-mqtt.heclouds.com:1883`；MQTT 任务改为在 Wi-Fi 连接后启动（`app_main` 中 `example_connect()` 之后调用 `mqtt_task_start()`）。
+- 将 OneNET MQTT 连接配置（Broker URI、产品ID、设备名称、设备密钥、token 有效期）写入 `sdkconfig.defaults` 并提交（sdkconfig 本身被 gitignore）。驱动内部自行处理订阅/上报/命令下发回复，`mqtt_driver_start()` 改为无参调用，移除外部事件回调接口。`task.c` 增加订阅 `cmd/request/+`，收到平台命令后自动回复到 `cmd/response/{cmdid}`；同时订阅数据上报响应主题 `dp/post/json/+`。`mqtt_driver` 增加产品 ID/设备名称/设备密钥/token 有效期配置，实现 OneNET token 生成（HMAC-SHA1，version=2018-10-31）与 CONNECT 三要素认证；`task.c` 增加 SNTP 时间同步；Broker URI 改为 `mqtt://studio-mqtt.heclouds.com:1883`；MQTT 任务改为在 Wi-Fi 连接后启动（`app_main` 中 `example_connect()` 之后调用 `mqtt_task_start()`）。
 - 启用 MQTT 业务任务：`task_start_all()` 中调用 `mqtt_task_start()`（连接 `mqtts://test.mosquitto.org:8886`，TLS 证书包校验）。
 - 组件重构：`components/` 目录更名为 `drivers/`，组件重命名为 `mqtt_driver` / `uart_driver`（根 `CMakeLists.txt` 增加 `EXTRA_COMPONENT_DIRS=drivers`）。
 - 驱动与业务分离：两个组件只保留驱动能力（初始化/发送/接收回调、发布/订阅/事件分发），业务逻辑移至 `main`（UART 定时发 0xAA、MQTT 事件处理待启用）。
