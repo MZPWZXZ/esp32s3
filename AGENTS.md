@@ -14,7 +14,7 @@
 ## 变更记录
 
 ### 2026-08-30
-- 新增 `app` 业务层组件（`EXTRA_COMPONENT_DIRS` 增加 `app`），`task.c`/`task.h` 直接放在 `app/` 下：统一实现 UART（接收回调 + 定时发 0xAA）与 MQTT（订阅/发布，默认未启用）业务任务并作为任务管理器，提供 `task_start_all()/uart_task_start()/mqtt_task_start()` 接口；`app_main` 精简为只做初始化和调用 `task_start_all()`。
+- 启用 MQTT 业务任务：`task_start_all()` 中调用 `mqtt_task_start()`（连接 `mqtts://test.mosquitto.org:8886`，TLS 证书包校验）。
 - 组件重构：`components/` 目录更名为 `drivers/`，组件重命名为 `mqtt_driver` / `uart_driver`（根 `CMakeLists.txt` 增加 `EXTRA_COMPONENT_DIRS=drivers`）。
 - 驱动与业务分离：两个组件只保留驱动能力（初始化/发送/接收回调、发布/订阅/事件分发），业务逻辑移至 `main`（UART 定时发 0xAA、MQTT 事件处理待启用）。
 - 应用不再强制依赖网络：`uart_driver_start()` 先于 Wi-Fi 连接执行，Wi-Fi 失败仅告警不崩溃。

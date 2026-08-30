@@ -139,7 +139,6 @@ void task_start_all(void)
     /* UART 业务任务：不依赖网络，上电即运行（GPIO1=RX, GPIO2=TX） */
     uart_task_start();
 
-    /* MQTT 业务任务：需要网络，默认未启用。
-     * 如需启用，取消下面注释即可（需先配置好 Wi-Fi 账号密码）。 */
-    // mqtt_task_start();
+    /* MQTT 业务任务：连接配置的 Broker（需要网络，Wi-Fi 连不上时自动重试） */
+    mqtt_task_start();
 }
