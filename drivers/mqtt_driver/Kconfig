@@ -45,4 +45,44 @@ menu "MQTT Driver Configuration"
         bool
         default y if MQTT_DRIVER_BROKER_CERTIFICATE_OVERRIDE != ""
 
+    config MQTT_DRIVER_ENABLE_ONENET_AUTH
+        bool "Enable OneNET auth (username/clientId/token)"
+        default n
+        help
+            When enabled, the MQTT CONNECT packet carries OneNET credentials:
+            username = product ID, clientId = device name,
+            password = token generated from the device key (HMAC-SHA1).
+            Only applies to the OneNET IoT platform.
+
+    if MQTT_DRIVER_ENABLE_ONENET_AUTH
+
+        config MQTT_DRIVER_PRODUCT_ID
+            string "OneNET product ID"
+            default ""
+            help
+                Product ID assigned by the OneNET console (used as username).
+
+        config MQTT_DRIVER_DEVICE_NAME
+            string "OneNET device name"
+            default ""
+            help
+                Device name created in the OneNET console (used as clientId).
+
+        config MQTT_DRIVER_DEVICE_KEY
+            string "OneNET device key (base64)"
+            default ""
+            help
+                Device key (accessKey) from the OneNET console, base64 encoded.
+                Used to compute the access token (password).
+
+        config MQTT_DRIVER_TOKEN_VALID_SECONDS
+            int "OneNET token valid seconds"
+            default 3600
+            range 60 31536000
+            help
+                Validity of the generated token. The device clock must be
+                synced (SNTP) so that the expiration time is in the future.
+
+    endif
+
 endmenu

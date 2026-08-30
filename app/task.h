@@ -7,9 +7,9 @@ extern "C" {
 /**
  * @brief 启动全部业务任务
  *
- * 统一创建并启动工程内的所有业务任务：
- * - UART 任务：接收回调 + 定时发送 0xAA（默认启用）
- * - MQTT 任务：连接 Broker 并订阅/发布（默认未启用）
+ * 统一创建并启动不依赖网络的全部业务任务（当前为 UART 任务：
+ * 接收回调 + 定时发送 0xAA）。MQTT 任务依赖网络，请在 Wi-Fi
+ * 连接就绪后单独调用 mqtt_task_start()。
  *
  * @param None
  * @return None

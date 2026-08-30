@@ -40,7 +40,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    /* ===== 业务任务：统一启动（UART 不依赖网络，上电即运行） ===== */
+    /* ===== 业务任务：启动不依赖网络的任务（UART 上电即运行） ===== */
     task_start_all();
 
     /* 连接 Wi-Fi：失败仅告警，不崩溃重启，不影响外设继续运行 */
@@ -48,4 +48,7 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Wi-Fi connect failed (%s), continuing without network", esp_err_to_name(err));
     }
+
+    /* ===== 业务任务：MQTT（依赖网络，需在 Wi-Fi 就绪后启动，内部先同步 SNTP 时间） ===== */
+    mqtt_task_start();
 }

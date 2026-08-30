@@ -16,6 +16,7 @@
 #include <stdio.h>
 
 #include "esp_log.h"
+#include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mqtt_client.h"
@@ -28,6 +29,11 @@ static const char *TAG = "task";
 
 /** @brief UART 定时发送间隔（毫秒） */
 #define UART_SEND_INTERVAL_MS 1000
+
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+/** @brief OneNET 主题前缀：$sys/{产品ID}/{设备名称} */
+#define ONENET_TOPIC_BASE "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
+#endif
 
 /* ============================ UART 任务 ============================ */
 
@@ -97,12 +103,23 @@ static void mqtt_evt_handler(int32_t event_id, void *event_data, void *arg)
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT connected, subscribing topics");
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET：订阅数据上报响应主题 */
+        mqtt_driver_subscribe(ONENET_TOPIC_BASE "/dp/post/json/+", 0);
+#else
         mqtt_driver_subscribe("topic/qos0", 0);
         mqtt_driver_subscribe("topic/qos1", 1);
+#endif
         break;
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT subscribed, msg_id=%d", event->msg_id);
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET：上报一个数据点（JSON 格式） */
+        mqtt_driver_publish(ONENET_TOPIC_BASE "/dp/post/json",
+                            "{\"datastreams\":[{\"id\":\"temp\",\"datapoints\":[{\"value\":25}]}]}", -1, 0, 0);
+#else
         mqtt_driver_publish("topic/qos0", "data", 4, 0, 0);
+#endif
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT data: topic=%.*s data=%.*s",
@@ -114,13 +131,38 @@ static void mqtt_evt_handler(int32_t event_id, void *event_data, void *arg)
 }
 
 /**
+ * @brief 通过 SNTP 同步系统时间
+ *
+ * OneNET token 的过期时间基于当前时间计算，
+ * 时间未同步（1970 起点）会导致生成的 token 被服务器拒绝。
+ *
+ * @param None
+ * @return None
+ */
+static void sync_system_time(void)
+{
+    ESP_LOGI(TAG, "Syncing system time via SNTP...");
+    esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&sntp_cfg);
+    esp_netif_sntp_start();
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_OK) {
+        ESP_LOGI(TAG, "System time synced");
+    } else {
+        ESP_LOGW(TAG, "SNTP sync timeout, OneNET token may be rejected");
+    }
+}
+
+/**
  * @brief 启动 MQTT 业务任务
+ *
+ * 先同步系统时间（OneNET token 需要），再启动 MQTT 驱动。
  *
  * @param None
  * @return None
  */
 void mqtt_task_start(void)
 {
+    sync_system_time();
     mqtt_driver_start(mqtt_evt_handler, NULL);
 }
 
@@ -128,6 +170,10 @@ void mqtt_task_start(void)
 
 /**
  * @brief 启动全部业务任务
+ *
+ * 统一创建并启动不依赖网络的全部业务任务（当前为 UART 任务）。
+ * MQTT 任务依赖网络，由应用层在 Wi-Fi 连接就绪后单独调用
+ * mqtt_task_start() 启动（内部会先同步 SNTP 时间）。
  *
  * @param None
  * @return None
@@ -138,7 +184,4 @@ void task_start_all(void)
 
     /* UART 业务任务：不依赖网络，上电即运行（GPIO1=RX, GPIO2=TX） */
     uart_task_start();
-
-    /* MQTT 业务任务：连接配置的 Broker（需要网络，Wi-Fi 连不上时自动重试） */
-    mqtt_task_start();
 }
