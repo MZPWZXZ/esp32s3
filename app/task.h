@@ -30,9 +30,8 @@ void uart_task_start(void);
 /**
  * @brief 启动 MQTT 业务任务
  *
- * 启动 MQTT 驱动并注册事件回调：连接成功后订阅主题，
- * 收到订阅确认后发布消息，收到数据时打印主题与内容。
- * 底层网络操作由 mqtt_driver 组件完成，本模块只编排业务逻辑。
+ * 先同步系统时间（SNTP，OneNET token 需要），再启动 MQTT 驱动。
+ * 驱动内部自动处理订阅主题、数据上报与命令下发回复。
  *
  * @param None
  * @return None

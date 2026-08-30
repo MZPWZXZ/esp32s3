@@ -2,9 +2,9 @@
  * @file mqtt_driver.c
  * @brief MQTT 客户端驱动实现
  *
- * 本文件仅实现 MQTT 驱动能力：客户端初始化、启动、
- * 发布/订阅/取消订阅、事件分发，以及 OneNET 平台的
- * token 生成与 CONNECT 认证（不包含任何业务逻辑）。
+ * 本文件实现 MQTT 驱动能力：客户端初始化、启动、
+ * 发布/订阅/取消订阅、事件处理（连接后订阅主题、数据上报、
+ * 命令下发回复），以及 OneNET 平台的 token 生成与 CONNECT 认证。
  *
  * @author esp32s3 工程
  */
@@ -32,10 +32,6 @@ static const char *TAG = "mqtt_driver";
 /** @brief MQTT 客户端句柄（驱动内部持有，供发布/订阅使用） */
 static esp_mqtt_client_handle_t s_client = NULL;
 
-/** @brief 业务层注册的事件回调及其参数 */
-static mqtt_driver_event_cb_t s_evt_cb = NULL;
-static void *s_evt_arg = NULL;
-
 #if CONFIG_MQTT_DRIVER_BROKER_CERTIFICATE_OVERRIDDEN
 static const char cert_override_pem[] =
     "-----BEGIN CERTIFICATE-----\n"
@@ -53,6 +49,13 @@ extern const uint8_t mosquitto_org_crt_end[] asm("_binary_mosquitto_org_crt_end"
 /** @brief OneNET token 算法参数（协议版本 2018-10-31） */
 #define ONENET_TOKEN_VERSION "2018-10-31"
 #define ONENET_TOKEN_METHOD  "sha1"
+
+/** @brief OneNET 主题前缀：$sys/{产品ID}/{设备名称} */
+#define ONENET_TOPIC_BASE "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
+/** @brief 命令下发主题前缀（+ 匹配 cmdid） */
+#define ONENET_CMD_REQUEST_PREFIX  ONENET_TOPIC_BASE "/cmd/request/"
+/** @brief 命令回复主题前缀（需拼接 cmdid） */
+#define ONENET_CMD_RESPONSE_PREFIX ONENET_TOPIC_BASE "/cmd/response/"
 
 /** @brief 生成的 token 缓冲区（客户端生命周期内需保持有效） */
 static char s_onenet_token[512];
@@ -147,7 +150,10 @@ static void onenet_generate_token(char *token_buf, size_t buf_len)
 /**
  * @brief MQTT 事件处理回调（驱动内部）
  *
- * 记录事件日志，并将事件分发到业务层注册的回调 s_evt_cb。
+ * 由 MQTT 客户端事件循环调用，处理连接、订阅、数据等事件：
+ * - 连接成功后订阅主题（OneNET：数据上报响应 + 命令下发）
+ * - 订阅确认后发布消息（OneNET：上报 JSON 数据点）
+ * - 收到数据时打印，并处理 OneNET 命令下发/回复
  *
  * @param handler_args 注册事件时传入的用户数据（本驱动中不使用，为 NULL）
  * @param base 事件基类型（始终为 MQTT 事件基）
@@ -155,11 +161,57 @@ static void onenet_generate_token(char *token_buf, size_t buf_len)
  * @param event_data 事件数据，类型为 esp_mqtt_event_handle_t
  * @return None
  */
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+static void mqtt_evt_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
+    esp_mqtt_event_handle_t event = event_data;
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
-    if (s_evt_cb != NULL) {
-        s_evt_cb(event_id, event_data, s_evt_arg);
+    switch ((esp_mqtt_event_id_t)event_id) {
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "MQTT connected, subscribing topics");
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET：订阅数据上报响应主题 + 命令下发主题 */
+        mqtt_driver_subscribe(ONENET_TOPIC_BASE "/dp/post/json/+", 0);
+        mqtt_driver_subscribe(ONENET_CMD_REQUEST_PREFIX "+", 0);
+#else
+        mqtt_driver_subscribe("topic/qos0", 0);
+        mqtt_driver_subscribe("topic/qos1", 1);
+#endif
+        break;
+    case MQTT_EVENT_SUBSCRIBED:
+        ESP_LOGI(TAG, "MQTT subscribed, msg_id=%d", event->msg_id);
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET：上报一个数据点（JSON 格式） */
+        mqtt_driver_publish(ONENET_TOPIC_BASE "/dp/post/json",
+                            "{\"datastreams\":[{\"id\":\"temp\",\"datapoints\":[{\"value\":25}]}]}", -1, 0, 0);
+#else
+        mqtt_driver_publish("topic/qos0", "data", 4, 0, 0);
+#endif
+        break;
+    case MQTT_EVENT_DATA:
+        ESP_LOGI(TAG, "MQTT data: topic=%.*s data=%.*s",
+                 event->topic_len, event->topic, event->data_len, event->data);
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET 命令下发：$sys/{pid}/{dev}/cmd/request/{cmdid}
+         * 收到命令后回复到 $sys/{pid}/{dev}/cmd/response/{cmdid} */
+        {
+            char topic_buf[128];
+            int tlen = event->topic_len < (int)sizeof(topic_buf) - 1 ? event->topic_len : (int)sizeof(topic_buf) - 1;
+            memcpy(topic_buf, event->topic, (size_t)tlen);
+            topic_buf[tlen] = '\0';
+            const char *cmdid = strrchr(topic_buf, '/');
+            if (cmdid != NULL && strncmp(topic_buf, ONENET_CMD_REQUEST_PREFIX, strlen(ONENET_CMD_REQUEST_PREFIX)) == 0) {
+                cmdid++; /* 跳过 '/'，得到 cmdid */
+                char resp_topic[160];
+                snprintf(resp_topic, sizeof(resp_topic), ONENET_CMD_RESPONSE_PREFIX "%s", cmdid);
+                const char *resp = "{\"code\":0,\"msg\":\"ok\"}";
+                mqtt_driver_publish(resp_topic, resp, -1, 0, 0);
+                ESP_LOGI(TAG, "Command received, replied on %s", resp_topic);
+            }
+        }
+#endif
+        break;
+    default:
+        break;
     }
 }
 
@@ -168,19 +220,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
  *
  * 根据 menuconfig 中的配置决定是否启动 MQTT：
  * - 启用 CONFIG_MQTT_DRIVER_ENABLED 时：初始化 MQTT 客户端，
- *   注册事件分发回调并启动连接；启用 OneNET 认证时自动生成 token。
+ *   注册内部事件处理回调并启动连接；启用 OneNET 认证时自动生成 token。
  * - 未启用时：打印警告日志并直接返回。
  *
- * @param evt_cb 事件回调函数指针（可为 NULL，仅记录日志不回调）
- * @param evt_arg 回调的用户参数（可为 NULL）
+ * @param None
  * @return None
  */
-void mqtt_driver_start(mqtt_driver_event_cb_t evt_cb, void *evt_arg)
+void mqtt_driver_start(void)
 {
 #if CONFIG_MQTT_DRIVER_ENABLED
-    s_evt_cb = evt_cb;
-    s_evt_arg = evt_arg;
-
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
             .address.uri = CONFIG_MQTT_DRIVER_BROKER_URI,
@@ -205,8 +253,8 @@ void mqtt_driver_start(mqtt_driver_event_cb_t evt_cb, void *evt_arg)
 
     ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
     s_client = esp_mqtt_client_init(&mqtt_cfg);
-    /* 注册事件分发回调（业务逻辑由 mqtt_driver_event_cb_t 回调处理） */
-    esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    /* 注册驱动内部事件处理回调 */
+    esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_evt_handler, NULL);
     esp_mqtt_client_start(s_client);
 #else
     ESP_LOGW(TAG, "MQTT disabled: CONFIG_MQTT_DRIVER_ENABLED is not set");

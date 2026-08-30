@@ -14,13 +14,11 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "mqtt_client.h"
 
 #include "mqtt_driver.h"
 #include "uart_driver.h"
@@ -30,15 +28,6 @@ static const char *TAG = "task";
 
 /** @brief UART 定时发送间隔（毫秒） */
 #define UART_SEND_INTERVAL_MS 1000
-
-#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-/** @brief OneNET 主题前缀：$sys/{产品ID}/{设备名称} */
-#define ONENET_TOPIC_BASE "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
-/** @brief 命令下发主题前缀（+ 匹配 cmdid） */
-#define ONENET_CMD_REQUEST_PREFIX  ONENET_TOPIC_BASE "/cmd/request/"
-/** @brief 命令回复主题前缀（需拼接 cmdid） */
-#define ONENET_CMD_RESPONSE_PREFIX ONENET_TOPIC_BASE "/cmd/response/"
-#endif
 
 /* ============================ UART 任务 ============================ */
 
@@ -93,69 +82,6 @@ void uart_task_start(void)
 /* ============================ MQTT 任务 ============================ */
 
 /**
- * @brief MQTT 事件回调（业务逻辑）
- *
- * 由 mqtt_driver 分发事件到此回调，处理订阅/发布/收数等业务。
- *
- * @param event_id 事件 ID（esp_mqtt_event_id_t）
- * @param event_data 事件数据，类型为 esp_mqtt_event_handle_t，仅在回调返回前有效
- * @param arg 用户参数（本任务未使用，为 NULL）
- * @return None
- */
-static void mqtt_evt_handler(int32_t event_id, void *event_data, void *arg)
-{
-    esp_mqtt_event_handle_t event = event_data;
-    switch ((esp_mqtt_event_id_t)event_id) {
-    case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT connected, subscribing topics");
-#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET：订阅数据上报响应主题 + 命令下发主题 */
-        mqtt_driver_subscribe(ONENET_TOPIC_BASE "/dp/post/json/+", 0);
-        mqtt_driver_subscribe(ONENET_CMD_REQUEST_PREFIX "+", 0);
-#else
-        mqtt_driver_subscribe("topic/qos0", 0);
-        mqtt_driver_subscribe("topic/qos1", 1);
-#endif
-        break;
-    case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT subscribed, msg_id=%d", event->msg_id);
-#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET：上报一个数据点（JSON 格式） */
-        mqtt_driver_publish(ONENET_TOPIC_BASE "/dp/post/json",
-                            "{\"datastreams\":[{\"id\":\"temp\",\"datapoints\":[{\"value\":25}]}]}", -1, 0, 0);
-#else
-        mqtt_driver_publish("topic/qos0", "data", 4, 0, 0);
-#endif
-        break;
-    case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT data: topic=%.*s data=%.*s",
-                 event->topic_len, event->topic, event->data_len, event->data);
-#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET 命令下发：$sys/{pid}/{dev}/cmd/request/{cmdid}
-         * 收到命令后回复到 $sys/{pid}/{dev}/cmd/response/{cmdid} */
-        {
-            char topic_buf[128];
-            int tlen = event->topic_len < (int)sizeof(topic_buf) - 1 ? event->topic_len : (int)sizeof(topic_buf) - 1;
-            memcpy(topic_buf, event->topic, (size_t)tlen);
-            topic_buf[tlen] = '\0';
-            const char *cmdid = strrchr(topic_buf, '/');
-            if (cmdid != NULL && strncmp(topic_buf, ONENET_CMD_REQUEST_PREFIX, strlen(ONENET_CMD_REQUEST_PREFIX)) == 0) {
-                cmdid++; /* 跳过 '/'，得到 cmdid */
-                char resp_topic[160];
-                snprintf(resp_topic, sizeof(resp_topic), ONENET_CMD_RESPONSE_PREFIX "%s", cmdid);
-                const char *resp = "{\"code\":0,\"msg\":\"ok\"}";
-                mqtt_driver_publish(resp_topic, resp, -1, 0, 0);
-                ESP_LOGI(TAG, "Command received, replied on %s", resp_topic);
-            }
-        }
-#endif
-        break;
-    default:
-        break;
-    }
-}
-
-/**
  * @brief 通过 SNTP 同步系统时间
  *
  * OneNET token 的过期时间基于当前时间计算，
@@ -180,7 +106,8 @@ static void sync_system_time(void)
 /**
  * @brief 启动 MQTT 业务任务
  *
- * 先同步系统时间（OneNET token 需要），再启动 MQTT 驱动。
+ * 先同步系统时间（OneNET token 需要），再启动 MQTT 驱动
+ * （驱动内部自动处理订阅、上报与命令回复）。
  *
  * @param None
  * @return None
@@ -188,7 +115,7 @@ static void sync_system_time(void)
 void mqtt_task_start(void)
 {
     sync_system_time();
-    mqtt_driver_start(mqtt_evt_handler, NULL);
+    mqtt_driver_start();
 }
 
 /* ============================ 统一入口 ============================ */

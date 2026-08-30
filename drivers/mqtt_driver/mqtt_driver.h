@@ -1,35 +1,21 @@
 #pragma once
 
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief MQTT 事件回调函数类型
- *
- * 业务层通过 mqtt_driver_start() 注册；驱动收到 MQTT 事件后分发到该回调。
- *
- * @param event_id 事件 ID（esp_mqtt_event_id_t 枚举值）
- * @param event_data 事件数据，类型为 esp_mqtt_event_handle_t，仅在回调返回前有效
- * @param arg 注册回调时传入的用户参数
- * @return None
- */
-typedef void (*mqtt_driver_event_cb_t)(int32_t event_id, void *event_data, void *arg);
-
-/**
  * @brief 启动 MQTT 驱动
  *
  * 初始化 MQTT 客户端并连接配置的 Broker（消息服务器）。
- * 驱动内部将收到的 MQTT 事件分发到 evt_cb 回调，不包含任何业务逻辑。
+ * 驱动内部注册事件处理回调：连接成功后自动订阅主题，
+ * 启用 OneNET 认证时按 OneNET 协议处理订阅/上报/命令下发回复。
  * 若未启用 CONFIG_MQTT_DRIVER_ENABLED，内部会直接跳过，不执行任何操作。
  *
- * @param evt_cb 事件回调函数指针（可为 NULL，仅记录日志不回调）
- * @param evt_arg 回调的用户参数（可为 NULL）
+ * @param None
  * @return None
  */
-void mqtt_driver_start(mqtt_driver_event_cb_t evt_cb, void *evt_arg);
+void mqtt_driver_start(void);
 
 /**
  * @brief 发布消息到指定主题
