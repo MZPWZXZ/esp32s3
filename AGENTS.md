@@ -14,6 +14,7 @@
 ## 变更记录
 
 ### 2026-08-30
+- 为 `components/mqtt_app` 的代码补充中文 Doxygen 风格注释（@brief/@param/@return），无参数或返回值时使用 None。
 - 将 MQTT 相关代码从 main 组件拆分为独立组件 `components/mqtt_app`，并新增 `CONFIG_MQTT_APP_ENABLED` 开关。
 - 工程名由 `mqtt` 改为 `esp32s3`（根目录 `CMakeLists.txt` 的 `project()`）。
 - 新增本文件，建立“变更记录 + 变更后自动提交并推送”的约定。

@@ -1,3 +1,12 @@
+/**
+ * @file mqtt_app.c
+ * @brief MQTT 客户端应用组件实现
+ *
+ * 本文件实现 MQTT 客户端的创建、启动与事件处理逻辑，
+ * 包括连接成功后的订阅/发布，以及断开、错误等事件的日志输出。
+ *
+ * @author esp32s3 工程
+ */
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -23,20 +32,23 @@ static const char cert_override_pem[] =
 #endif
 
 #if CONFIG_EXAMPLE_CERT_VALIDATE_MOSQUITTO_CA
-/* Embedded Mosquitto CA certificate for test.mosquitto.org:8883 */
+/* 内嵌的 Mosquitto CA 证书，用于 test.mosquitto.org:8883 的服务器证书校验 */
 extern const uint8_t mosquitto_org_crt_start[] asm("_binary_mosquitto_org_crt_start");
 extern const uint8_t mosquitto_org_crt_end[] asm("_binary_mosquitto_org_crt_end");
 #endif
 
-/*
- * @brief Event handler registered to receive MQTT events
+/**
+ * @brief MQTT 事件处理回调函数
  *
- *  This function is called by the MQTT client event loop.
+ * 该函数由 MQTT 客户端事件循环调用，根据收到的事件类型分别处理：
+ * 连接成功时订阅/取消订阅主题，收到订阅确认后发布消息，
+ * 收到数据时打印主题与内容，出错时打印具体的错误信息。
  *
- * @param handler_args user data registered to the event.
- * @param base Event base for the handler(always MQTT Base in this example).
- * @param event_id The id for the received event.
- * @param event_data The data for the event, esp_mqtt_event_handle_t.
+ * @param handler_args 注册事件时传入的用户自定义数据（本示例中为 NULL）
+ * @param base 事件基类型（本示例中始终为 MQTT 事件基）
+ * @param event_id 收到的事件 ID（esp_mqtt_event_id_t 枚举值）
+ * @param event_data 事件数据，类型为 esp_mqtt_event_handle_t
+ * @return None
  */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -95,6 +107,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+/**
+ * @brief 启动 MQTT 客户端
+ *
+ * 根据 menuconfig 中的配置决定是否启动 MQTT：
+ * - 启用 CONFIG_MQTT_APP_ENABLED 时：初始化 MQTT 客户端，
+ *   注册事件处理回调（mqtt_event_handler）并启动连接。
+ * - 未启用时：打印警告日志并直接返回。
+ *
+ * @param None
+ * @return None
+ */
 void mqtt_app_start(void)
 {
 #if CONFIG_MQTT_APP_ENABLED
@@ -106,14 +129,14 @@ void mqtt_app_start(void)
 #elif CONFIG_EXAMPLE_CERT_VALIDATE_MOSQUITTO_CA
             .verification.certificate = (const char *)mosquitto_org_crt_start,
 #else
-            .verification.crt_bundle_attach = esp_crt_bundle_attach, /* Use built-in certificate bundle */
+            .verification.crt_bundle_attach = esp_crt_bundle_attach, /* 使用内置证书包（默认方式） */
 #endif
         },
     };
 
     ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
+    /* 最后一个参数用于向事件处理回调传递用户数据，本示例中传入 NULL */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
 #else
