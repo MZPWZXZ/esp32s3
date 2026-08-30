@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
@@ -33,6 +34,10 @@ static const char *TAG = "task";
 #if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
 /** @brief OneNET 主题前缀：$sys/{产品ID}/{设备名称} */
 #define ONENET_TOPIC_BASE "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
+/** @brief 命令下发主题前缀（+ 匹配 cmdid） */
+#define ONENET_CMD_REQUEST_PREFIX  ONENET_TOPIC_BASE "/cmd/request/"
+/** @brief 命令回复主题前缀（需拼接 cmdid） */
+#define ONENET_CMD_RESPONSE_PREFIX ONENET_TOPIC_BASE "/cmd/response/"
 #endif
 
 /* ============================ UART 任务 ============================ */
@@ -104,8 +109,9 @@ static void mqtt_evt_handler(int32_t event_id, void *event_data, void *arg)
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT connected, subscribing topics");
 #if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET：订阅数据上报响应主题 */
+        /* OneNET：订阅数据上报响应主题 + 命令下发主题 */
         mqtt_driver_subscribe(ONENET_TOPIC_BASE "/dp/post/json/+", 0);
+        mqtt_driver_subscribe(ONENET_CMD_REQUEST_PREFIX "+", 0);
 #else
         mqtt_driver_subscribe("topic/qos0", 0);
         mqtt_driver_subscribe("topic/qos1", 1);
@@ -124,6 +130,25 @@ static void mqtt_evt_handler(int32_t event_id, void *event_data, void *arg)
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT data: topic=%.*s data=%.*s",
                  event->topic_len, event->topic, event->data_len, event->data);
+#if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
+        /* OneNET 命令下发：$sys/{pid}/{dev}/cmd/request/{cmdid}
+         * 收到命令后回复到 $sys/{pid}/{dev}/cmd/response/{cmdid} */
+        {
+            char topic_buf[128];
+            int tlen = event->topic_len < (int)sizeof(topic_buf) - 1 ? event->topic_len : (int)sizeof(topic_buf) - 1;
+            memcpy(topic_buf, event->topic, (size_t)tlen);
+            topic_buf[tlen] = '\0';
+            const char *cmdid = strrchr(topic_buf, '/');
+            if (cmdid != NULL && strncmp(topic_buf, ONENET_CMD_REQUEST_PREFIX, strlen(ONENET_CMD_REQUEST_PREFIX)) == 0) {
+                cmdid++; /* 跳过 '/'，得到 cmdid */
+                char resp_topic[160];
+                snprintf(resp_topic, sizeof(resp_topic), ONENET_CMD_RESPONSE_PREFIX "%s", cmdid);
+                const char *resp = "{\"code\":0,\"msg\":\"ok\"}";
+                mqtt_driver_publish(resp_topic, resp, -1, 0, 0);
+                ESP_LOGI(TAG, "Command received, replied on %s", resp_topic);
+            }
+        }
+#endif
         break;
     default:
         break;
