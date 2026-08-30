@@ -83,6 +83,14 @@ menu "MQTT Driver Configuration"
                 Validity of the generated token. The device clock must be
                 synced (SNTP) so that the expiration time is in the future.
 
+        config MQTT_DRIVER_PROPERTY_ID
+            string "OneNET thing-model property identifier"
+            default "temp"
+            help
+                Property identifier (属性标识) defined in the product thing
+                model (物模型) on the OneNET console. Reported values use this
+                identifier in the OneJSON payload, e.g. {"params":{"temp":...}}.
+
     endif
 
 endmenu

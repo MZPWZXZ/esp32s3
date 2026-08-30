@@ -50,12 +50,12 @@ extern const uint8_t mosquitto_org_crt_end[] asm("_binary_mosquitto_org_crt_end"
 #define ONENET_TOKEN_VERSION "2018-10-31"
 #define ONENET_TOKEN_METHOD  "sha1"
 
-/** @brief OneNET 主题前缀：$sys/{产品ID}/{设备名称} */
-#define ONENET_TOPIC_BASE "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
-/** @brief 命令下发主题前缀（+ 匹配 cmdid） */
-#define ONENET_CMD_REQUEST_PREFIX  ONENET_TOPIC_BASE "/cmd/request/"
-/** @brief 命令回复主题前缀（需拼接 cmdid） */
-#define ONENET_CMD_RESPONSE_PREFIX ONENET_TOPIC_BASE "/cmd/response/"
+/** @brief OneNET Studio 物模型主题 */
+#define ONENET_TOPIC_BASE               "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
+#define ONENET_PROPERTY_POST_TOPIC      ONENET_TOPIC_BASE "/thing/property/post"        /* 属性上报 */
+#define ONENET_PROPERTY_POST_REPLY      ONENET_TOPIC_BASE "/thing/property/post_reply"  /* 属性上报回复 */
+#define ONENET_PROPERTY_SET_TOPIC       ONENET_TOPIC_BASE "/thing/service/property/set" /* 属性设置（命令下发） */
+#define ONENET_PROPERTY_SET_REPLY       ONENET_TOPIC_BASE "/thing/service/property/set_reply"
 
 /** @brief 生成的 token 缓冲区（客户端生命周期内需保持有效） */
 static char s_onenet_token[512];
@@ -169,9 +169,9 @@ static void mqtt_evt_handler(void *handler_args, esp_event_base_t base, int32_t 
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT connected, subscribing topics");
 #if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET：订阅数据上报响应主题 + 命令下发主题 */
-        mqtt_driver_subscribe(ONENET_TOPIC_BASE "/dp/post/json/+", 0);
-        mqtt_driver_subscribe(ONENET_CMD_REQUEST_PREFIX "+", 0);
+        /* OneNET Studio：订阅属性上报回复 + 属性设置（命令下发） */
+        mqtt_driver_subscribe(ONENET_PROPERTY_POST_REPLY, 0);
+        mqtt_driver_subscribe(ONENET_PROPERTY_SET_TOPIC, 0);
 #else
         mqtt_driver_subscribe("topic/qos0", 0);
         mqtt_driver_subscribe("topic/qos1", 1);
@@ -180,9 +180,15 @@ static void mqtt_evt_handler(void *handler_args, esp_event_base_t base, int32_t 
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT subscribed, msg_id=%d", event->msg_id);
 #if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET：上报一个数据点（JSON 格式） */
-        mqtt_driver_publish(ONENET_TOPIC_BASE "/dp/post/json",
-                            "{\"datastreams\":[{\"id\":\"temp\",\"datapoints\":[{\"value\":25}]}]}", -1, 0, 0);
+        /* OneNET Studio：上报物模型属性（OneJSON 格式）
+         * 属性标识取自 CONFIG_MQTT_DRIVER_PROPERTY_ID，需与产品物模型一致 */
+        {
+            char payload[160];
+            snprintf(payload, sizeof(payload),
+                     "{\"id\":\"1\",\"version\":\"1.0\",\"params\":{\"%s\":{\"value\":25}}}",
+                     CONFIG_MQTT_DRIVER_PROPERTY_ID);
+            mqtt_driver_publish(ONENET_PROPERTY_POST_TOPIC, payload, -1, 0, 0);
+        }
 #else
         mqtt_driver_publish("topic/qos0", "data", 4, 0, 0);
 #endif
@@ -191,21 +197,30 @@ static void mqtt_evt_handler(void *handler_args, esp_event_base_t base, int32_t 
         ESP_LOGI(TAG, "MQTT data: topic=%.*s data=%.*s",
                  event->topic_len, event->topic, event->data_len, event->data);
 #if CONFIG_MQTT_DRIVER_ENABLE_ONENET_AUTH
-        /* OneNET 命令下发：$sys/{pid}/{dev}/cmd/request/{cmdid}
-         * 收到命令后回复到 $sys/{pid}/{dev}/cmd/response/{cmdid} */
+        /* OneNET Studio 属性设置（命令下发）：回复到 set_reply 主题
+         * 回复需要回传平台下发报文中的 id */
         {
             char topic_buf[128];
             int tlen = event->topic_len < (int)sizeof(topic_buf) - 1 ? event->topic_len : (int)sizeof(topic_buf) - 1;
             memcpy(topic_buf, event->topic, (size_t)tlen);
             topic_buf[tlen] = '\0';
-            const char *cmdid = strrchr(topic_buf, '/');
-            if (cmdid != NULL && strncmp(topic_buf, ONENET_CMD_REQUEST_PREFIX, strlen(ONENET_CMD_REQUEST_PREFIX)) == 0) {
-                cmdid++; /* 跳过 '/'，得到 cmdid */
-                char resp_topic[160];
-                snprintf(resp_topic, sizeof(resp_topic), ONENET_CMD_RESPONSE_PREFIX "%s", cmdid);
-                const char *resp = "{\"code\":0,\"msg\":\"ok\"}";
-                mqtt_driver_publish(resp_topic, resp, -1, 0, 0);
-                ESP_LOGI(TAG, "Command received, replied on %s", resp_topic);
+            if (strcmp(topic_buf, ONENET_PROPERTY_SET_TOPIC) == 0) {
+                /* 从 JSON 载荷中提取 "id":"xxx" */
+                char id_buf[32] = "0";
+                const char *id_pos = strstr(event->data, "\"id\"");
+                if (id_pos != NULL) {
+                    const char *colon = strchr(id_pos, ':');
+                    const char *q1 = colon != NULL ? strchr(colon, '"') : NULL;
+                    const char *q2 = q1 != NULL ? strchr(q1 + 1, '"') : NULL;
+                    if (q1 != NULL && q2 != NULL && (q2 - q1 - 1) < (int)sizeof(id_buf)) {
+                        memcpy(id_buf, q1 + 1, (size_t)(q2 - q1 - 1));
+                        id_buf[q2 - q1 - 1] = '\0';
+                    }
+                }
+                char resp[96];
+                snprintf(resp, sizeof(resp), "{\"id\":\"%s\",\"code\":200}", id_buf);
+                mqtt_driver_publish(ONENET_PROPERTY_SET_REPLY, resp, -1, 0, 0);
+                ESP_LOGI(TAG, "Property set received, replied on set_reply");
             }
         }
 #endif
