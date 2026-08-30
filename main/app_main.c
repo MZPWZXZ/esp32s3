@@ -26,6 +26,7 @@
 #include "protocol_examples_common.h"
 
 #include "mqtt_app.h"
+#include "uart_app.h"
 
 static const char *TAG = "mqtts_example";
 
@@ -51,4 +52,7 @@ void app_main(void)
     ESP_ERROR_CHECK(example_connect());
 
     mqtt_app_start();
+
+    /* 启动 UART 通信（GPIO1=RX, GPIO2=TX） */
+    uart_app_start();
 }
