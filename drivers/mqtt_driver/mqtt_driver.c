@@ -54,8 +54,8 @@ extern const uint8_t mosquitto_org_crt_end[] asm("_binary_mosquitto_org_crt_end"
 #define ONENET_TOPIC_BASE               "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
 #define ONENET_PROPERTY_POST_TOPIC      ONENET_TOPIC_BASE "/thing/property/post"        /* 属性上报 */
 #define ONENET_PROPERTY_POST_REPLY      ONENET_TOPIC_BASE "/thing/property/post_reply"  /* 属性上报回复 */
-#define ONENET_PROPERTY_SET_TOPIC       ONENET_TOPIC_BASE "/thing/service/property/set" /* 属性设置（命令下发） */
-#define ONENET_PROPERTY_SET_REPLY       ONENET_TOPIC_BASE "/thing/service/property/set_reply"
+#define ONENET_PROPERTY_SET_TOPIC       ONENET_TOPIC_BASE "/thing/property/set"       /* 属性设置（命令下发） */
+#define ONENET_PROPERTY_SET_REPLY       ONENET_TOPIC_BASE "/thing/property/set_reply"
 
 /** @brief 生成的 token 缓冲区（客户端生命周期内需保持有效） */
 static char s_onenet_token[512];
@@ -185,7 +185,7 @@ static void mqtt_evt_handler(void *handler_args, esp_event_base_t base, int32_t 
         {
             char payload[160];
             snprintf(payload, sizeof(payload),
-                     "{\"id\":\"1\",\"version\":\"1.0\",\"params\":{\"%s\":{\"value\":25}}}",
+                     "{\"id\":\"1\",\"version\":\"1.0\",\"params\":{\"%s\":{\"value\":35}}}",
                      CONFIG_MQTT_DRIVER_PROPERTY_ID);
             mqtt_driver_publish(ONENET_PROPERTY_POST_TOPIC, payload, -1, 0, 0);
         }

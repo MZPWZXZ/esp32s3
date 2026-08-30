@@ -14,7 +14,7 @@
 ## 变更记录
 
 ### 2026-08-30
-- 修复 OneNET Studio 断开问题：数据上报改用物模型主题 `$sys/{pid}/{dev}/thing/property/post` + OneJSON 格式（属性标识可配置 `MQTT_DRIVER_PROPERTY_ID`），订阅 `thing/property/post_reply` 与 `thing/service/property/set`（属性设置自动回复 `set_reply`），替换旧的 `$dp` 数据流主题。驱动内部自行处理订阅/上报/命令下发回复，`mqtt_driver_start()` 改为无参调用，移除外部事件回调接口。`task.c` 增加订阅 `cmd/request/+`，收到平台命令后自动回复到 `cmd/response/{cmdid}`；同时订阅数据上报响应主题 `dp/post/json/+`。`mqtt_driver` 增加产品 ID/设备名称/设备密钥/token 有效期配置，实现 OneNET token 生成（HMAC-SHA1，version=2018-10-31）与 CONNECT 三要素认证；`task.c` 增加 SNTP 时间同步；Broker URI 改为 `mqtt://studio-mqtt.heclouds.com:1883`；MQTT 任务改为在 Wi-Fi 连接后启动（`app_main` 中 `example_connect()` 之后调用 `mqtt_task_start()`）。
+- 修复 OneNET 属性设置下发失败（dev not subscribed）：属性设置主题由错误的 `thing/service/property/set` 改为官方文档的 `thing/property/set`，回复主题同步改为 `thing/property/set_reply`。驱动内部自行处理订阅/上报/命令下发回复，`mqtt_driver_start()` 改为无参调用，移除外部事件回调接口。`task.c` 增加订阅 `cmd/request/+`，收到平台命令后自动回复到 `cmd/response/{cmdid}`；同时订阅数据上报响应主题 `dp/post/json/+`。`mqtt_driver` 增加产品 ID/设备名称/设备密钥/token 有效期配置，实现 OneNET token 生成（HMAC-SHA1，version=2018-10-31）与 CONNECT 三要素认证；`task.c` 增加 SNTP 时间同步；Broker URI 改为 `mqtt://studio-mqtt.heclouds.com:1883`；MQTT 任务改为在 Wi-Fi 连接后启动（`app_main` 中 `example_connect()` 之后调用 `mqtt_task_start()`）。
 - 启用 MQTT 业务任务：`task_start_all()` 中调用 `mqtt_task_start()`（连接 `mqtts://test.mosquitto.org:8886`，TLS 证书包校验）。
 - 组件重构：`components/` 目录更名为 `drivers/`，组件重命名为 `mqtt_driver` / `uart_driver`（根 `CMakeLists.txt` 增加 `EXTRA_COMPONENT_DIRS=drivers`）。
 - 驱动与业务分离：两个组件只保留驱动能力（初始化/发送/接收回调、发布/订阅/事件分发），业务逻辑移至 `main`（UART 定时发 0xAA、MQTT 事件处理待启用）。
