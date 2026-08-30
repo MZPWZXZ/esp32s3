@@ -7,6 +7,8 @@
  *
  * @author esp32s3 工程
  */
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -41,6 +43,46 @@ static void uart_rx_task(void *arg)
             ESP_LOGI(TAG, "Received %d bytes: %.*s", len, len, (char *)data);
         }
     }
+}
+
+#if CONFIG_UART_APP_PERIODIC_SEND
+/**
+ * @brief 定时发送任务
+ *
+ * 按 CONFIG_UART_APP_SEND_INTERVAL_MS 配置的间隔（默认 1000ms）
+ * 周期性地通过 UART 发送一个字节 0xAA。
+ *
+ * @param arg 创建任务时传入的用户参数（本组件中不使用，为 NULL）
+ * @return None
+ */
+static void uart_tx_task(void *arg)
+{
+    const uint8_t tx_byte = 0xAA;
+    while (1) {
+        int written = uart_app_send(&tx_byte, sizeof(tx_byte));
+        if (written < 0) {
+            ESP_LOGW(TAG, "Periodic send failed");
+        } else {
+            ESP_LOGD(TAG, "Sent 0xAA (%d byte)", written);
+        }
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_UART_APP_SEND_INTERVAL_MS));
+    }
+}
+#endif /* CONFIG_UART_APP_PERIODIC_SEND */
+
+/**
+ * @brief 通过 UART 发送数据
+ *
+ * 将指定长度的数据通过 UART（UART_NUM_1）发送出去。
+ * 调用前需先通过 uart_app_start() 完成驱动初始化。
+ *
+ * @param data 待发送的数据缓冲区指针
+ * @param len 待发送的数据长度（字节）
+ * @return 实际发送的字节数；发送失败时返回 -1
+ */
+int uart_app_send(const uint8_t *data, size_t len)
+{
+    return uart_write_bytes(UART_NUM_1, data, len);
 }
 
 /**
@@ -85,6 +127,10 @@ void uart_app_start(void)
 
     /* 创建接收任务 */
     xTaskCreate(uart_rx_task, "uart_rx_task", 2048, NULL, 10, NULL);
+#if CONFIG_UART_APP_PERIODIC_SEND
+    /* 创建定时发送任务（每 CONFIG_UART_APP_SEND_INTERVAL_MS ms 发送一次 0xAA） */
+    xTaskCreate(uart_tx_task, "uart_tx_task", 2048, NULL, 10, NULL);
+#endif
 #else
     ESP_LOGW(TAG, "UART disabled: CONFIG_UART_APP_ENABLED is not set");
 #endif

@@ -14,6 +14,7 @@
 ## 变更记录
 
 ### 2026-08-30
+- 为 `components/uart_app` 新增发送函数 `uart_app_send()`，并增加定时发送任务：每 1s 通过 UART 发送 0xAA（间隔与开关可通过 menuconfig 配置）。
 - 新增 `components/uart_app` 组件：实现 UART 通信（默认 GPIO1=RX、GPIO2=TX，可通过 menuconfig 修改），含 `CONFIG_UART_APP_ENABLED` 开关，并在 `app_main` 中调用 `uart_app_start()`。
 - 为 `components/mqtt_app` 的代码补充中文 Doxygen 风格注释（@brief/@param/@return），无参数或返回值时使用 None。
 - 将 MQTT 相关代码从 main 组件拆分为独立组件 `components/mqtt_app`，并新增 `CONFIG_MQTT_APP_ENABLED` 开关。

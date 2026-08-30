@@ -16,6 +16,18 @@ extern "C" {
  */
 void uart_app_start(void);
 
+/**
+ * @brief 通过 UART 发送数据
+ *
+ * 将指定长度的数据通过 UART（UART_NUM_1）发送出去。
+ * 调用前需先通过 uart_app_start() 完成驱动初始化。
+ *
+ * @param data 待发送的数据缓冲区指针
+ * @param len 待发送的数据长度（字节）
+ * @return 实际发送的字节数；发送失败时返回 -1
+ */
+int uart_app_send(const uint8_t *data, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

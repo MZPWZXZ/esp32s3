@@ -26,4 +26,19 @@ menu "UART Application Configuration"
         help
             GPIO number used as the UART RX pin.
 
+    config UART_APP_PERIODIC_SEND
+        bool "Send 0xAA periodically"
+        default y
+        help
+            When enabled, a task sends the byte 0xAA over UART at a fixed
+            interval (see UART_APP_SEND_INTERVAL_MS).
+
+    config UART_APP_SEND_INTERVAL_MS
+        int "Periodic send interval (ms)"
+        default 1000
+        range 10 60000
+        depends on UART_APP_PERIODIC_SEND
+        help
+            Interval in milliseconds between two periodic 0xAA transmissions.
+
 endmenu
