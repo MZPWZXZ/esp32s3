@@ -53,7 +53,7 @@ extern const uint8_t mosquitto_org_crt_end[] asm("_binary_mosquitto_org_crt_end"
 /** @brief OneNET Studio 物模型主题 */
 #define ONENET_TOPIC_BASE               "$sys/" CONFIG_MQTT_DRIVER_PRODUCT_ID "/" CONFIG_MQTT_DRIVER_DEVICE_NAME
 #define ONENET_PROPERTY_POST_TOPIC      ONENET_TOPIC_BASE "/thing/property/post"        /* 属性上报 */
-#define ONENET_PROPERTY_POST_REPLY      ONENET_TOPIC_BASE "/thing/property/post_reply"  /* 属性上报回复 */
+#define ONENET_PROPERTY_POST_REPLY      ONENET_TOPIC_BASE "/thing/property/post/reply" /* 属性上报回复 */
 #define ONENET_PROPERTY_SET_TOPIC       ONENET_TOPIC_BASE "/thing/property/set"       /* 属性设置（命令下发） */
 #define ONENET_PROPERTY_SET_REPLY       ONENET_TOPIC_BASE "/thing/property/set_reply"
 
