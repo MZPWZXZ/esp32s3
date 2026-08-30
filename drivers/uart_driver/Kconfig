@@ -1,0 +1,29 @@
+menu "UART Driver Configuration"
+
+    config UART_DRIVER_ENABLED
+        bool "Enable UART driver"
+        default y
+        help
+            When enabled, uart_driver_start() initializes the UART peripheral
+            and creates the receive task. Disable to skip UART entirely.
+
+    config UART_DRIVER_BAUD_RATE
+        int "UART baud rate"
+        default 115200
+        range 300 4000000
+        help
+            Baud rate used by the UART communication.
+
+    config UART_DRIVER_TX_GPIO
+        int "UART TX GPIO number"
+        default 2
+        help
+            GPIO number used as the UART TX pin.
+
+    config UART_DRIVER_RX_GPIO
+        int "UART RX GPIO number"
+        default 1
+        help
+            GPIO number used as the UART RX pin.
+
+endmenu

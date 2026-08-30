@@ -32,5 +32,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=c:\\UserFile\\MyRepository\\esp32s3\\mqtt\\build"
-  ]
+  ],
+  "idf.flashType": "UART"
 }

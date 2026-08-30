@@ -1,38 +1,38 @@
-menu "MQTT Application Configuration"
+menu "MQTT Driver Configuration"
 
-    config MQTT_APP_ENABLED
-        bool "Enable MQTT"
+    config MQTT_DRIVER_ENABLED
+        bool "Enable MQTT driver"
         default y
         help
-            When enabled, mqtt_app_start() starts the MQTT client and connects
-            to the configured broker. Disable to skip MQTT entirely.
+            When enabled, mqtt_driver_start() creates the MQTT client and
+            connects to the configured broker. Disable to skip MQTT entirely.
 
-    choice EXAMPLE_CERT_VALIDATION
+    choice MQTT_DRIVER_CERT_VALIDATION
         prompt "Certificate validation method"
-        default EXAMPLE_CERT_VALIDATE_BUNDLE
+        default MQTT_DRIVER_CERT_VALIDATE_BUNDLE
         help
             Choose how the broker's TLS server certificate is validated.
             - Certificate bundle (default).
             - Embedded certificate
 
-        config EXAMPLE_CERT_VALIDATE_BUNDLE
+        config MQTT_DRIVER_CERT_VALIDATE_BUNDLE
             bool "Certificate bundle"
 
-        config EXAMPLE_CERT_VALIDATE_MOSQUITTO_CA
+        config MQTT_DRIVER_CERT_VALIDATE_MOSQUITTO_CA
             bool "Embedded Certificate"
 
     endchoice
 
-    config EXAMPLE_MQTT_BROKER_URI
+    config MQTT_DRIVER_BROKER_URI
         string "MQTT broker URI"
         default "mqtts://test.mosquitto.org:8886"
-        default "mqtts://test.mosquitto.org:8883" if EXAMPLE_CERT_VALIDATE_MOSQUITTO_CA
+        default "mqtts://test.mosquitto.org:8883" if MQTT_DRIVER_CERT_VALIDATE_MOSQUITTO_CA
         help
             URI to the MQTT broker.
             When using the example broker the port must be set to 8883 if testing
-            embedded certificate
+            embedded certificate.
 
-    config EXAMPLE_BROKER_CERTIFICATE_OVERRIDE
+    config MQTT_DRIVER_BROKER_CERTIFICATE_OVERRIDE
         string "Broker certificate override (PEM body)"
         default ""
         help
@@ -41,8 +41,8 @@ menu "MQTT Application Configuration"
             embedded Mosquitto CA. Provide only the base64 payload without the
             BEGIN/END markers.
 
-    config EXAMPLE_BROKER_CERTIFICATE_OVERRIDDEN
+    config MQTT_DRIVER_BROKER_CERTIFICATE_OVERRIDDEN
         bool
-        default y if EXAMPLE_BROKER_CERTIFICATE_OVERRIDE != ""
+        default y if MQTT_DRIVER_BROKER_CERTIFICATE_OVERRIDE != ""
 
 endmenu
